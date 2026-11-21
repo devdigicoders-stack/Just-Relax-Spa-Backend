@@ -51,23 +51,53 @@ exports.login = async (req, res) => {
   }
 };
 
-exports.verifyToken = async (req, res) => {
+exports.changePassword = async (req, res) => {
   try {
     const token = req.headers.authorization?.split(" ")[1];
     if (!token) {
-      return res.status(401).json({ success: false, error: "No token provided" });
+      return res.status(401).json({ success: false, error: "Authentication token required" });
     }
 
     const secret = process.env.JWT_SECRET || "justrelaxspa_luxury_jwt_default";
     const decoded = jwt.verify(token, secret);
-    const admin = await Admin.findById(decoded.id).select("-password");
+    const admin = await Admin.findById(decoded.id);
 
     if (!admin) {
-      return res.status(404).json({ success: false, error: "Admin user not found" });
+      return res.status(404).json({ success: false, error: "Admin account not found" });
     }
 
-    res.json({ success: true, user: admin });
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        error: "Both current password and new password are required",
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: "New password must be at least 6 characters long",
+      });
+    }
+
+    const isMatch = await admin.comparePassword(currentPassword);
+    if (!isMatch) {
+      return res.status(400).json({
+        success: false,
+        error: "Incorrect current password",
+      });
+    }
+
+    admin.password = newPassword; // Mongoose pre('save') hashes it with bcrypt
+    await admin.save();
+
+    res.json({
+      success: true,
+      message: "Password changed successfully. Please keep your new credentials secure.",
+    });
   } catch (error) {
-    res.status(401).json({ success: false, error: "Invalid or expired token" });
+    res.status(500).json({ success: false, error: error.message });
   }
 };
